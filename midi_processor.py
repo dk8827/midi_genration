@@ -14,31 +14,137 @@ class MidiProcessor:
 
     def get_instrument_from_name(self, name_str):
         """Attempts to get a music21 instrument object from its name."""
+        if not name_str or not isinstance(name_str, str):
+            return instrument.Piano()
+            
+        # Direct mapping first
         if name_str in self.instrument_map:
             return self.instrument_map[name_str].__class__()
 
+        # Try music21's built-in instrument mapping
         try:
-            cleaned_name = re.sub(r'\\d+', '', name_str).strip()
+            cleaned_name = re.sub(r'\d+', '', name_str).strip()
             instr_obj = instrument.fromString(cleaned_name)
-            if instr_obj:
-                if instr_obj.__class__ == instrument.Instrument:
-                    pass
-                else:
-                    return instr_obj
+            if instr_obj and instr_obj.__class__ != instrument.Instrument:
+                return instr_obj
         except:
             pass
 
-        name_lower = name_str.lower()
-        if "piano" in name_lower: return instrument.Piano()
-        if "guitar" in name_lower: return instrument.AcousticGuitar()
+        # Enhanced keyword-based mapping with more comprehensive coverage
+        name_lower = name_str.lower().strip()
+        
+        # Remove common prefixes/suffixes that might interfere
+        name_lower = re.sub(r'(^(acoustic|electric|digital|synthetic?|midi)\s*)', '', name_lower)
+        name_lower = re.sub(r'(\s*(1|2|3|4|5|6|7|8|9|0)+$)', '', name_lower)
+        
+        # Piano family
+        if any(term in name_lower for term in ["piano", "pno", "pf"]):
+            if any(term in name_lower for term in ["electric", "elec", "ep", "rhodes", "wurly"]):
+                return instrument.ElectricPiano()
+            return instrument.Piano()
+            
+        # Guitar family
+        if any(term in name_lower for term in ["guitar", "gtr", "gt"]):
+            if any(term in name_lower for term in ["electric", "elec", "jazz", "clean", "dist", "overdrive"]):
+                return instrument.ElectricGuitar()
+            elif any(term in name_lower for term in ["acoustic", "nylon", "steel", "classical"]):
+                return instrument.AcousticGuitar()
+            return instrument.AcousticGuitar()  # Default to acoustic
+            
+        # Bass family
+        if "bass" in name_lower and "drum" not in name_lower:
+            if any(term in name_lower for term in ["electric", "elec", "finger", "pick", "fretless"]):
+                return instrument.ElectricBass()
+            elif any(term in name_lower for term in ["acoustic", "double", "upright", "contrabass"]):
+                return instrument.Contrabass()
+            return instrument.ElectricBass()
+            
+        # String instruments
         if "violin" in name_lower: return instrument.Violin()
+        if "viola" in name_lower: return instrument.Viola()
+        if any(term in name_lower for term in ["cello", "violoncello"]): return instrument.Violoncello()
+        if any(term in name_lower for term in ["contrabass", "double bass", "upright bass"]): return instrument.Contrabass()
+        
+        # Wind instruments - Woodwinds
         if "flute" in name_lower: return instrument.Flute()
-        if "drum" in name_lower or "percussion" in name_lower: return instrument.Percussion()
-        if "sax" in name_lower: return instrument.Saxophone()
+        if "piccolo" in name_lower: return instrument.Piccolo()
+        if "recorder" in name_lower: return instrument.Recorder()
+        if "clarinet" in name_lower: return instrument.Clarinet()
+        if "oboe" in name_lower: return instrument.Oboe()
+        if "bassoon" in name_lower: return instrument.Bassoon()
+        if "english horn" in name_lower: return instrument.EnglishHorn()
+        
+        # Saxophone family
+        if "sax" in name_lower:
+            if "soprano" in name_lower: return instrument.SopranoSaxophone()
+            elif "alto" in name_lower: return instrument.AltoSaxophone()
+            elif "tenor" in name_lower: return instrument.TenorSaxophone()
+            elif "baritone" in name_lower or "bari" in name_lower: return instrument.BaritoneSaxophone()
+            return instrument.Saxophone()
+            
+        # Brass instruments
         if "trumpet" in name_lower: return instrument.Trumpet()
-        if "bass" in name_lower and "drum" not in name_lower : return instrument.ElectricBass()
-
-        print(f"Warning: Could not map instrument name '{name_str}' reliably. Defaulting to Piano.")
+        if "trombone" in name_lower: return instrument.Trombone()
+        if "tuba" in name_lower: return instrument.Tuba()
+        if any(term in name_lower for term in ["french horn", "horn"]) and "english" not in name_lower:
+            return instrument.Horn()
+            
+        # Percussion - be more inclusive
+        percussion_terms = [
+            "drum", "percussion", "perc", "cymbal", "tom", "hi-hat", "hihat", "hat",
+            "snare", "kick", "bass drum", "bongo", "conga", "timbale", "cowbell",
+            "tambourine", "claves", "wood", "agogo", "guiro", "maracas", "triangle",
+            "shaker", "bell", "chime", "gong", "crash", "ride", "splash"
+        ]
+        if any(term in name_lower for term in percussion_terms):
+            return instrument.Percussion()
+            
+        # Keyboard/Synth family
+        if any(term in name_lower for term in ["harpsichord", "harp"]): return instrument.Harpsichord()
+        if "celesta" in name_lower: return instrument.Celesta()
+        if "glockenspiel" in name_lower: return instrument.Glockenspiel()
+        if "vibraphone" in name_lower or "vibes" in name_lower: return instrument.Vibraphone()
+        if "marimba" in name_lower: return instrument.Marimba()
+        if "xylophone" in name_lower: return instrument.Xylophone()
+        if any(term in name_lower for term in ["tubular bells", "chimes"]): return instrument.TubularBells()
+        if "dulcimer" in name_lower: return instrument.Dulcimer()
+        if "organ" in name_lower: return instrument.Organ()
+        
+        # Voice/Choir
+        if any(term in name_lower for term in ["voice", "vocal", "choir", "chorus", "singer", "aah", "ooh"]):
+            return instrument.Choir()
+            
+        # Synth instruments
+        if any(term in name_lower for term in ["synth", "synthesizer", "pad", "lead", "fx", "effect"]):
+            return instrument.ElectricPiano()  # Using ElectricPiano as synth substitute
+            
+        # Check if it's a common instrument class name
+        common_instruments = {
+            'piano': instrument.Piano(),
+            'guitar': instrument.AcousticGuitar(),
+            'violin': instrument.Violin(),
+            'flute': instrument.Flute(),
+            'trumpet': instrument.Trumpet(),
+            'percussion': instrument.Percussion(),
+            'drums': instrument.Percussion(),
+            'organ': instrument.Organ(),
+            'harp': instrument.Harp(),
+            'banjo': instrument.Banjo(),
+            'mandolin': instrument.Mandolin(),
+        }
+        
+        for key, instr_obj in common_instruments.items():
+            if key in name_lower:
+                return instr_obj
+        
+        # If we still can't map it, only show warning for truly unusual names
+        # Skip warning for generic terms or empty strings
+        skip_warning_terms = ["instrument", "track", "channel", "midi", "", " "]
+        should_warn = not any(term in name_lower for term in skip_warning_terms) and len(name_str.strip()) > 2
+        
+        if should_warn:
+            print(f"Warning: Could not map instrument name '{name_str}' reliably. Defaulting to Piano.")
+        
         return instrument.Piano()
 
     def get_instrument_name(self, m21_instrument):
@@ -60,35 +166,52 @@ class MidiProcessor:
         if not original_name_str:
             return self.default_instrument_name
 
-        temp_name = re.sub(r'\\s*\\d+\\s*$', '', original_name_str).strip()
+        # Fix the regex pattern for removing trailing numbers
+        temp_name = re.sub(r'\s*\d+\s*$', '', original_name_str).strip()
         temp_name_lower = temp_name.lower()
 
+        # Check direct mapping first
         for k_map in self.instrument_map.keys():
             if k_map.lower() == temp_name_lower:
                 return k_map 
 
         name_l = original_name_str.lower() 
 
+        # Enhanced instrument name detection with better patterns
+        # Keyboard family
         if "harpsichord" in name_l: return "Harpsichord"
         if "celesta" in name_l: return "Celesta"
         if "glockenspiel" in name_l: return "Glockenspiel"
-        if "vibraphone" in name_l: return "Vibraphone"
+        if "vibraphone" in name_l or "vibes" in name_l: return "Vibraphone"
         if "marimba" in name_l: return "Marimba"
         if "xylophone" in name_l: return "Xylophone"
-        if "tubular bells" in name_l: return "Tubular Bells"
+        if "tubular bells" in name_l or "chimes" in name_l: return "Tubular Bells"
         if "dulcimer" in name_l: return "Dulcimer"
         if "clavinet" in name_l: return "Clavinet"
-        if "electric grand piano" in name_l or "electric piano" in name_l or "rhodes" in name_l or "wurly" in name_l: return "Electric Piano"
-        if "piano" in name_l: return "Piano"
-        if "electric guitar" in name_l or "jazz gtr" in name_l or "clean gtr" in name_l or "mute gtr" in name_l or "dist gtr" in name_l: return "Electric Guitar"
-        if "acoustic guitar" in name_l or "nylon" in name_l or "steel" in name_l : return "Acoustic Guitar"
-        if "guitar" in name_l: return "Guitar" # Generic Guitar if not specified
+        if any(term in name_l for term in ["electric grand piano", "electric piano", "rhodes", "wurly", "ep"]): 
+            return "Electric Piano"
+        if "piano" in name_l or "pno" in name_l: return "Piano"
+        
+        # Guitar family
+        if any(term in name_l for term in ["electric guitar", "jazz gtr", "clean gtr", "mute gtr", "dist gtr", "overdrive"]):
+            return "Electric Guitar"
+        if any(term in name_l for term in ["acoustic guitar", "nylon", "steel", "classical guitar"]):
+            return "Acoustic Guitar"
+        if "guitar" in name_l or "gtr" in name_l: return "Guitar"
+        
+        # String family
         if "violin" in name_l: return "Violin"
         if "viola" in name_l: return "Viola"
         if "cello" in name_l or "violoncello" in name_l: return "Cello"
-        if ("electric bass" in name_l or "finger" in name_l or "pick" in name_l or "fretless" in name_l) and "bass" in name_l : return "Electric Bass"
-        if "acoustic bass" in name_l or "contrabass" in name_l or "double bass" in name_l : return "Contrabass"
-        if "bass" in name_l and "drum" not in name_l: return "Bass" # Generic Bass
+        
+        # Bass family
+        if any(term in name_l for term in ["electric bass", "finger", "pick", "fretless"]) and "bass" in name_l:
+            return "Electric Bass"
+        if any(term in name_l for term in ["acoustic bass", "contrabass", "double bass", "upright"]):
+            return "Contrabass"
+        if "bass" in name_l and "drum" not in name_l: return "Bass"
+        
+        # Wind instruments
         if "flute" in name_l: return "Flute"
         if "piccolo" in name_l: return "Piccolo"
         if "recorder" in name_l: return "Recorder"
@@ -100,43 +223,68 @@ class MidiProcessor:
         if "oboe" in name_l: return "Oboe"
         if "bassoon" in name_l: return "Bassoon"
         if "english horn" in name_l: return "English Horn"
+        
+        # Saxophone family
         if "soprano sax" in name_l: return "Soprano Sax"
         if "alto sax" in name_l: return "Alto Sax"
         if "tenor sax" in name_l: return "Tenor Sax"
-        if "baritone sax" in name_l: return "Baritone Sax"
+        if "baritone sax" in name_l or "bari sax" in name_l: return "Baritone Sax"
         if "sax" in name_l: return "Saxophone"
+        
+        # Brass instruments
         if "trumpet" in name_l: return "Trumpet"
         if "trombone" in name_l: return "Trombone"
         if "tuba" in name_l: return "Tuba"
         if "french horn" in name_l or ("horn" in name_l and "english" not in name_l): return "French Horn"
         if "brass section" in name_l or "brass ensemble" in name_l: return "BrassSection"
-        if "string ensemble" in name_l or "strings" in name_l and "synth" not in name_l: return "StringEnsemble"
-        if "voice" in name_l or "choir" in name_l or "vocal" in name_l or "aah" in name_l or "ooh" in name_l and "synth" not in name_l: return "Voice"
-        if "synth voice" in name_l or "synth choir" in name_l : return "Synth Voice"
-        if "synth lead" in name_l or "synth pad" in name_l or "synth brass" in name_l or "synth strings" in name_l or "polysynth" in name_l or "fx " in name_l: return "Synth"
-        if "synth" in name_l : return "Synth"
         
+        # Ensemble instruments
+        if "string ensemble" in name_l or ("strings" in name_l and "synth" not in name_l): return "StringEnsemble"
+        if any(term in name_l for term in ["voice", "choir", "vocal", "aah", "ooh"]) and "synth" not in name_l: 
+            return "Voice"
+        if "synth voice" in name_l or "synth choir" in name_l: return "Synth Voice"
+        
+        # Synth categories
+        if any(term in name_l for term in ["synth lead", "synth pad", "synth brass", "synth strings", "polysynth", "fx"]):
+            return "Synth"
+        if "synth" in name_l: return "Synth"
+        
+        # Check percussion instruments from instrument map
         for k_map_perc in self.instrument_map.keys():
-            is_percussion_map_key = any(p_term in k_map_perc.lower() for p_term in ["drum", "cymbal", "tom", "hi-hat", "snare", "kick", "percussion", "bongo", "conga", "timbale", "cowbell", "tambourine", "claves", "wood", "agogo", "guiro", "maracas", "triangle"])
+            is_percussion_map_key = any(p_term in k_map_perc.lower() for p_term in [
+                "drum", "cymbal", "tom", "hi-hat", "snare", "kick", "percussion", 
+                "bongo", "conga", "timbale", "cowbell", "tambourine", "claves", 
+                "wood", "agogo", "guiro", "maracas", "triangle"
+            ])
             if is_percussion_map_key and k_map_perc.lower() in name_l:
                 return k_map_perc
 
-        if any(p_term in name_l for p_term in ["drum", "percussion", "cymbal", "tom", "hat", "snare", "kick", "conga", "bongo", "timbale", "agogo", "woodblock", "claves", "guiro", "maracas", "triangle"]):
+        # General percussion detection
+        if any(p_term in name_l for p_term in [
+            "drum", "percussion", "cymbal", "tom", "hat", "snare", "kick", 
+            "conga", "bongo", "timbale", "agogo", "woodblock", "claves", 
+            "guiro", "maracas", "triangle", "bell", "chime", "gong"
+        ]):
             return "Drums"
 
-        final_name = re.sub(r'\\d+', '', original_name_str).strip()
-        final_name = re.sub(r'\\s+', ' ', final_name) 
+        # Clean up the final name with proper regex patterns
+        final_name = re.sub(r'\d+', '', original_name_str).strip()
+        final_name = re.sub(r'\s+', ' ', final_name) 
         final_name = final_name.replace("Instrument", "").strip()
         final_name = ''.join(char for char in final_name if char.isalnum() or char.isspace() or char in ['-', '_', '(', ')'])
         final_name = final_name.strip()
 
+        # If we still don't have a good name, try the class name
         if not final_name or final_name.lower() == "instrument" or len(final_name) < 2:
             class_name = m21_instrument.__class__.__name__
-            if class_name and class_name != "Instrument" and class_name != "UnpitchedPercussion" and class_name != "PitchedPercussion":
+            if class_name and class_name not in ["Instrument", "UnpitchedPercussion", "PitchedPercussion"]:
+                # Check if this class name maps to any instrument in our map
                 for k_map, v_map_obj in self.instrument_map.items():
                     if v_map_obj.__class__.__name__ == class_name:
                         return k_map
-                return class_name
+                # Return the class name if it seems reasonable
+                if len(class_name) > 2:
+                    return class_name
             return self.default_instrument_name
             
         return final_name
