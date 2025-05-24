@@ -38,6 +38,7 @@ INSTRUMENT_MAP = {
     "Contrabass": instrument.Contrabass(),
     "Electric Bass": instrument.ElectricBass(),
     "StringEnsemble": instrument.StringInstrument(), # Generic string ensemble
+    "String": instrument.StringInstrument(), # Generic string
     "SynthStrings": instrument.ElectricPiano(), # Replaced Synthesizer
     "Voice": instrument.Choir(), # Or Vocalist
     "Synth Voice": instrument.Choir(), # Replaced SynthVoice

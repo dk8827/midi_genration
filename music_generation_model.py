@@ -87,7 +87,7 @@ class MusicGenerationModel:
             prediction_input_np = np.reshape(pattern, (1, len(pattern)))
             prediction_probs = keras_model_to_predict_with.predict(prediction_input_np, verbose=0)[0]
 
-            temperature = 0.85 
+            temperature = 0.75 
             prediction_probs = np.asarray(prediction_probs).astype('float64')
             
             prediction_probs_safe = np.log(prediction_probs + 1e-8) / temperature
