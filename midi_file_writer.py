@@ -25,61 +25,140 @@ class MidiFileWriter:
 
         for i, pattern_item in enumerate(prediction_output):
             try:
-                if ':' not in pattern_item:
-                    print(f"INFO (MidiWriter): Skipping malformed item (no ':') in sequence for '{output_file}': {pattern_item}")
-                    continue
+                # Handle simultaneous events (new format: SIMUL[Piano:C4,Guitar:E4])
+                if pattern_item.startswith("SIMUL[") and pattern_item.endswith("]"):
+                    # Extract simultaneous events
+                    simul_content = pattern_item[6:-1]  # Remove "SIMUL[" and "]"
+                    simultaneous_events = simul_content.split(',')
+                    
+                    # Find the maximum current offset among all involved instruments
+                    max_current_offset = 0.0
+                    involved_instruments = []
+                    
+                    for event in simultaneous_events:
+                        if ':' not in event:
+                            print(f"INFO (MidiWriter): Skipping malformed simultaneous event (no ':') in '{pattern_item}': {event}")
+                            continue
+                        instrument_name_str, _ = event.split(':', 1)
+                        involved_instruments.append(instrument_name_str)
+                        
+                        # Ensure part exists
+                        if instrument_name_str not in parts:
+                            m21_instr_obj = self.midi_processor.get_instrument_from_name(instrument_name_str)
+                            new_part = stream.Part(id=instrument_name_str)
+                            new_part.insert(0, m21_instr_obj)
+                            parts[instrument_name_str] = new_part
+                            part_offsets[instrument_name_str] = 0.0
+                            score.insert(0, new_part)
+                        
+                        max_current_offset = max(max_current_offset, part_offsets[instrument_name_str])
+                    
+                    # Synchronize all involved instruments to the same offset
+                    for instrument_name_str in involved_instruments:
+                        if part_offsets[instrument_name_str] < max_current_offset:
+                            # Add rest to bring this instrument up to the sync point
+                            rest_duration = max_current_offset - part_offsets[instrument_name_str]
+                            if rest_duration > 0:
+                                rest_event = note.Rest()
+                                rest_event.duration.quarterLength = rest_duration
+                                parts[instrument_name_str].insert(part_offsets[instrument_name_str], rest_event)
+                                part_offsets[instrument_name_str] = max_current_offset
+                    
+                    # Now add the simultaneous events
+                    for event in simultaneous_events:
+                        if ':' not in event:
+                            continue
+                        instrument_name_str, event_str = event.split(':', 1)
+                        
+                        current_part = parts[instrument_name_str]
+                        current_offset_for_this_part = part_offsets[instrument_name_str]
+                        
+                        m21_event = None
+                        event_duration_ql = 0.5 
 
-                instrument_name_str, event_str = pattern_item.split(':', 1)
-
-                if instrument_name_str not in parts:
-                    m21_instr_obj = self.midi_processor.get_instrument_from_name(instrument_name_str)
-                    new_part = stream.Part(id=instrument_name_str)
-                    new_part.insert(0, m21_instr_obj)
-                    parts[instrument_name_str] = new_part
-                    part_offsets[instrument_name_str] = 0.0
-                    score.insert(0, new_part)
-
-                current_part = parts[instrument_name_str]
-                current_offset_for_this_part = part_offsets[instrument_name_str]
+                        if event_str == "Rest":
+                            m21_event = note.Rest()
+                            m21_event.duration.quarterLength = event_duration_ql
+                        elif ('.' in event_str) or event_str.isdigit(): 
+                            notes_in_chord_pitches = event_str.split('.')
+                            chord_notes_obj = []
+                            for p_str in notes_in_chord_pitches:
+                                try:
+                                    n_obj = note.Note(int(p_str)) 
+                                    chord_notes_obj.append(n_obj)
+                                except ValueError:
+                                    continue
+                                except Exception as pitch_e:
+                                    continue
+                            if chord_notes_obj:
+                                m21_event = chord.Chord(chord_notes_obj)
+                                m21_event.duration.quarterLength = event_duration_ql
+                                any_notes_or_chords_processed = True
+                        else: 
+                            try:
+                                m21_event = note.Note(event_str)
+                                m21_event.duration.quarterLength = event_duration_ql
+                                any_notes_or_chords_processed = True
+                            except Exception:
+                                continue 
+                        
+                        if m21_event:
+                            current_part.insert(current_offset_for_this_part, m21_event)
+                            part_offsets[instrument_name_str] += m21_event.duration.quarterLength
                 
-                m21_event = None
-                event_duration_ql = 0.5 
+                # Handle regular single instrument events
+                elif ':' in pattern_item:
+                    instrument_name_str, event_str = pattern_item.split(':', 1)
 
-                if event_str == "Rest":
-                    m21_event = note.Rest()
-                    m21_event.duration.quarterLength = event_duration_ql
-                elif ('.' in event_str) or event_str.isdigit(): 
-                    notes_in_chord_pitches = event_str.split('.')
-                    chord_notes_obj = []
-                    for p_str in notes_in_chord_pitches:
+                    if instrument_name_str not in parts:
+                        m21_instr_obj = self.midi_processor.get_instrument_from_name(instrument_name_str)
+                        new_part = stream.Part(id=instrument_name_str)
+                        new_part.insert(0, m21_instr_obj)
+                        parts[instrument_name_str] = new_part
+                        part_offsets[instrument_name_str] = 0.0
+                        score.insert(0, new_part)
+
+                    current_part = parts[instrument_name_str]
+                    current_offset_for_this_part = part_offsets[instrument_name_str]
+                    
+                    m21_event = None
+                    event_duration_ql = 0.5 
+
+                    if event_str == "Rest":
+                        m21_event = note.Rest()
+                        m21_event.duration.quarterLength = event_duration_ql
+                    elif ('.' in event_str) or event_str.isdigit(): 
+                        notes_in_chord_pitches = event_str.split('.')
+                        chord_notes_obj = []
+                        for p_str in notes_in_chord_pitches:
+                            try:
+                                n_obj = note.Note(int(p_str)) 
+                                chord_notes_obj.append(n_obj)
+                            except ValueError:
+                                continue
+                            except Exception as pitch_e:
+                                continue
+                        if chord_notes_obj:
+                            m21_event = chord.Chord(chord_notes_obj)
+                            m21_event.duration.quarterLength = event_duration_ql
+                            any_notes_or_chords_processed = True
+                    else: 
                         try:
-                            n_obj = note.Note(int(p_str)) 
-                            chord_notes_obj.append(n_obj)
-                        except ValueError:
-                            # print(f"Warning: Could not parse pitch number '{p_str}' in chord '{event_str}'. Skipping pitch.")
-                            continue
-                        except Exception as pitch_e:
-                            # print(f"Warning: Error creating note for pitch '{p_str}' in chord: {pitch_e}. Skipping pitch.")
-                            continue
-                    if chord_notes_obj:
-                        m21_event = chord.Chord(chord_notes_obj)
-                        m21_event.duration.quarterLength = event_duration_ql
-                        any_notes_or_chords_processed = True
-                else: 
-                    try:
-                        m21_event = note.Note(event_str)
-                        m21_event.duration.quarterLength = event_duration_ql
-                        any_notes_or_chords_processed = True
-                    except Exception:
-                        # print(f"Warning: Could not parse note/pitch '{event_str}'. Skipping.")
-                        continue 
-                
-                actual_duration_for_offset_update = 0.0
-                if m21_event:
-                    current_part.insert(current_offset_for_this_part, m21_event)
-                    actual_duration_for_offset_update = m21_event.duration.quarterLength
-                
-                part_offsets[instrument_name_str] += actual_duration_for_offset_update
+                            m21_event = note.Note(event_str)
+                            m21_event.duration.quarterLength = event_duration_ql
+                            any_notes_or_chords_processed = True
+                        except Exception:
+                            continue 
+                    
+                    actual_duration_for_offset_update = 0.0
+                    if m21_event:
+                        current_part.insert(current_offset_for_this_part, m21_event)
+                        actual_duration_for_offset_update = m21_event.duration.quarterLength
+                    
+                    part_offsets[instrument_name_str] += actual_duration_for_offset_update
+                else:
+                    print(f"INFO (MidiWriter): Skipping malformed item (no ':' and not SIMUL) in sequence for '{output_file}': {pattern_item}")
+                    continue
 
             except Exception as e:
                 print(f"ERROR (MidiWriter): Processing generated item '{pattern_item}' for '{output_file}' at index {i}: {e}")

@@ -6,7 +6,7 @@ import os
 from config import (
     MIDI_DATA_PATH, OUTPUT_FOLDER, MODEL_FILE, NOTES_FILE, 
     PROCESSED_MIDI_EVENTS_FILE, SEQUENCE_LENGTH, EPOCHS, BATCH_SIZE, 
-    NUM_NOTES_TO_GENERATE, DEFAULT_INSTRUMENT_NAME
+    NUM_NOTES_TO_GENERATE, DEFAULT_INSTRUMENT_NAME, TIME_RESOLUTION
 )
 
 # Import classes
@@ -18,7 +18,7 @@ from generate_midi_callback import GenerateMidiCallback
 if __name__ == '__main__':
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-    processor = MidiProcessor(data_path=MIDI_DATA_PATH, default_instrument_name=DEFAULT_INSTRUMENT_NAME)
+    processor = MidiProcessor(data_path=MIDI_DATA_PATH, default_instrument_name=DEFAULT_INSTRUMENT_NAME, time_resolution=TIME_RESOLUTION)
     writer = MidiFileWriter(midi_processor=processor, default_instrument_name=DEFAULT_INSTRUMENT_NAME)
 
     print("--- Loading and Preprocessing Data ---")
@@ -55,6 +55,9 @@ if __name__ == '__main__':
     if not notes_corpus:
         print(f"CRITICAL: No notes available. Please check your MIDI files in '{MIDI_DATA_PATH}'. Exiting.")
         exit()
+
+    # Analyze the time-aware encoding
+    processor.analyze_time_aware_encoding(notes_corpus)
 
     current_pitchnames = sorted(list(set(notes_corpus)))
     current_n_vocab = len(current_pitchnames)

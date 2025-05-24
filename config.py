@@ -14,6 +14,9 @@ BATCH_SIZE = 64
 NUM_NOTES_TO_GENERATE = 200
 DEFAULT_INSTRUMENT_NAME = "Piano" # Fallback instrument
 
+# --- Time-Aware Processing ---
+TIME_RESOLUTION = 0.25  # Time resolution in quarter notes (0.25 = sixteenth note, 0.5 = eighth note, 1.0 = quarter note)
+
 # --- Instrument Mapping ---
 INSTRUMENT_MAP = {
     # General MIDI Mappings (a selection, you can expand this)

@@ -6,10 +6,11 @@ from keras.utils import to_categorical
 from config import DEFAULT_INSTRUMENT_NAME, INSTRUMENT_MAP
 
 class MidiProcessor:
-    def __init__(self, data_path, default_instrument_name=DEFAULT_INSTRUMENT_NAME):
+    def __init__(self, data_path, default_instrument_name=DEFAULT_INSTRUMENT_NAME, time_resolution=0.25):
         self.data_path = data_path
         self.default_instrument_name = default_instrument_name
         self.instrument_map = INSTRUMENT_MAP
+        self.time_resolution = time_resolution  # Time resolution in quarter notes (0.25 = sixteenth note)
 
     def get_instrument_from_name(self, name_str):
         """Attempts to get a music21 instrument object from its name."""
@@ -140,21 +141,33 @@ class MidiProcessor:
             
         return final_name
 
-    def get_notes_from_midi_files(self):
-        notes_with_instruments = []
+    def get_time_aware_notes_from_midi_files(self):
+        """
+        Extract MIDI events with timing information to preserve coordination between instruments.
+        Returns events grouped by time slots to maintain simultaneity.
+        """
+        all_timed_events = []  # List of (time_slot, instrument, event) tuples
+        
         for file_path in glob.glob(self.data_path + "*.mid"):
             try:
                 midi = converter.parse(file_path)
-                print(f"Parsing {file_path}")
+                print(f"Parsing with timing: {file_path}")
+                
+                # Collect all events with their absolute timing
+                file_events = []
                 
                 parts = instrument.partitionByInstrument(midi)
                 if parts:
                     for part in parts:
                         instr = part.getInstrument()
-                        if instr is None and len(part.getElementsByClass(instrument.Instrument)) > 0 :
+                        if instr is None and len(part.getElementsByClass(instrument.Instrument)) > 0:
                             instr = part.getElementsByClass(instrument.Instrument)[0]
                         instr_name = self.get_instrument_name(instr)
+                        
                         for element in part.recurse().notesAndRests:
+                            absolute_offset = element.getOffsetInHierarchy(midi)
+                            duration = element.duration.quarterLength
+                            
                             event_str = None
                             if isinstance(element, note.Note):
                                 event_str = str(element.pitch)
@@ -162,36 +175,162 @@ class MidiProcessor:
                                 event_str = '.'.join(str(n) for n in element.normalOrder)
                             elif isinstance(element, note.Rest):
                                 event_str = "Rest"
+                            
                             if event_str:
-                                notes_with_instruments.append(f"{instr_name}:{event_str}")
-                else: 
+                                # Quantize time to our resolution grid
+                                time_slot = round(absolute_offset / self.time_resolution) * self.time_resolution
+                                file_events.append((time_slot, instr_name, event_str, duration))
+                else:
+                    # Handle flat MIDI files
                     current_instrument_name = self.default_instrument_name
                     instr_at_start = midi.flat.getElementsByClass(instrument.Instrument).first()
                     if instr_at_start:
                         current_instrument_name = self.get_instrument_name(instr_at_start)
+                    
                     for element in midi.flat.notesAndRests:
-                        event_str = None
+                        absolute_offset = element.getOffsetInHierarchy(midi)
+                        duration = element.duration.quarterLength
+                        
+                        # Check for instrument changes
                         el_instr = element.getInstrument(returnDefault=False)
                         if el_instr:
-                             current_instrument_name = self.get_instrument_name(el_instr)
+                            current_instrument_name = self.get_instrument_name(el_instr)
+                        
+                        event_str = None
                         if isinstance(element, note.Note):
                             event_str = str(element.pitch)
                         elif isinstance(element, chord.Chord):
                             event_str = '.'.join(str(n) for n in element.normalOrder)
                         elif isinstance(element, note.Rest):
                             event_str = "Rest"
+                        
                         if event_str:
-                            notes_with_instruments.append(f"{current_instrument_name}:{event_str}")
-                if not notes_with_instruments and not (parts or midi.flat.notesAndRests):
-                     print(f"    No notes or parts found or successfully processed in {file_path}")
+                            time_slot = round(absolute_offset / self.time_resolution) * self.time_resolution
+                            file_events.append((time_slot, current_instrument_name, event_str, duration))
+                
+                all_timed_events.extend(file_events)
+                
+                if not file_events:
+                    print(f"    No timed events found in {file_path}")
+                    
             except Exception as e:
                 print(f"Error parsing {file_path}: {e}")
                 import traceback
                 traceback.print_exc()
-        print(f"Total instrumented events extracted: {len(notes_with_instruments)}")
-        if not notes_with_instruments:
-            print("Warning: No notes were extracted. Check your MIDI files and parsing logic.")
-        return notes_with_instruments
+        
+        if not all_timed_events:
+            print("Warning: No timed events were extracted. Check your MIDI files and parsing logic.")
+            return []
+        
+        # Group events by time slots
+        time_grouped_events = self._group_events_by_time(all_timed_events)
+        
+        # Convert to sequence format
+        time_aware_sequence = self._create_time_aware_sequence(time_grouped_events)
+        
+        print(f"Total time-grouped events extracted: {len(time_aware_sequence)}")
+        return time_aware_sequence
+
+    def _group_events_by_time(self, timed_events):
+        """Group events that occur at the same time slot."""
+        from collections import defaultdict
+        
+        time_groups = defaultdict(dict)  # {time_slot: {instrument: event}}
+        
+        # Sort events by time
+        timed_events.sort(key=lambda x: x[0])
+        
+        for time_slot, instrument, event, duration in timed_events:
+            # If an instrument already has an event at this time slot, 
+            # handle the conflict (could be overlapping notes)
+            if instrument in time_groups[time_slot]:
+                # For now, we'll concatenate overlapping events with '+'
+                existing_event = time_groups[time_slot][instrument]
+                if existing_event != event:  # Only if it's actually different
+                    time_groups[time_slot][instrument] = f"{existing_event}+{event}"
+            else:
+                time_groups[time_slot][instrument] = event
+        
+        return dict(time_groups)
+
+    def _create_time_aware_sequence(self, time_grouped_events):
+        """Convert time-grouped events into a sequence suitable for the neural network."""
+        sequence = []
+        
+        # Sort time slots
+        sorted_times = sorted(time_grouped_events.keys())
+        
+        for time_slot in sorted_times:
+            instrument_events = time_grouped_events[time_slot]
+            
+            if len(instrument_events) == 1:
+                # Single instrument playing
+                instrument, event = list(instrument_events.items())[0]
+                sequence.append(f"{instrument}:{event}")
+            else:
+                # Multiple instruments playing simultaneously
+                # Create a compound event that represents simultaneity
+                simultaneous_parts = []
+                for instrument in sorted(instrument_events.keys()):  # Sort for consistency
+                    event = instrument_events[instrument]
+                    simultaneous_parts.append(f"{instrument}:{event}")
+                
+                # Encode as simultaneous event
+                compound_event = f"SIMUL[{','.join(simultaneous_parts)}]"
+                sequence.append(compound_event)
+        
+        return sequence
+
+    def get_notes_from_midi_files(self):
+        """
+        Updated method that uses time-aware extraction by default.
+        """
+        return self.get_time_aware_notes_from_midi_files()
+
+    def analyze_time_aware_encoding(self, time_aware_sequence):
+        """
+        Analyze the time-aware encoding to provide insights about simultaneity patterns.
+        """
+        total_events = len(time_aware_sequence)
+        simultaneous_events = sum(1 for event in time_aware_sequence if event.startswith("SIMUL["))
+        single_events = total_events - simultaneous_events
+        
+        print(f"\n--- Time-Aware Encoding Analysis ---")
+        print(f"Total events: {total_events}")
+        print(f"Single instrument events: {single_events} ({single_events/total_events*100:.1f}%)")
+        print(f"Simultaneous events: {simultaneous_events} ({simultaneous_events/total_events*100:.1f}%)")
+        
+        # Analyze instrument participation
+        instruments_in_simul = set()
+        max_simul_size = 0
+        simul_sizes = []
+        
+        for event in time_aware_sequence:
+            if event.startswith("SIMUL["):
+                simul_content = event[6:-1]
+                parts = simul_content.split(',')
+                simul_sizes.append(len(parts))
+                max_simul_size = max(max_simul_size, len(parts))
+                
+                for part in parts:
+                    if ':' in part:
+                        instrument = part.split(':', 1)[0]
+                        instruments_in_simul.add(instrument)
+        
+        if simul_sizes:
+            avg_simul_size = sum(simul_sizes) / len(simul_sizes)
+            print(f"Average instruments per simultaneous event: {avg_simul_size:.1f}")
+            print(f"Maximum instruments playing simultaneously: {max_simul_size}")
+            print(f"Instruments participating in simultaneous events: {sorted(instruments_in_simul)}")
+        
+        # Sample some simultaneous events
+        sample_simul = [event for event in time_aware_sequence if event.startswith("SIMUL[")][:3]
+        if sample_simul:
+            print(f"\nSample simultaneous events:")
+            for i, event in enumerate(sample_simul):
+                print(f"  {i+1}: {event}")
+        
+        print("--- End Analysis ---\n")
 
     def prepare_sequences(self, notes_with_instruments, n_vocab, sequence_length):
         pitchnames = sorted(list(set(notes_with_instruments)))
