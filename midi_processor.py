@@ -1,7 +1,7 @@
 import glob
 import re
 import numpy as np
-from music21 import converter, instrument, note, chord
+from music21 import converter, instrument, note, chord, tempo
 from keras.utils import to_categorical
 from config import DEFAULT_INSTRUMENT_NAME, INSTRUMENT_MAP
 
@@ -488,6 +488,36 @@ class MidiProcessor:
                 print(f"  {i+1}: {event}")
         
         print("--- End Analysis ---\n")
+
+    def get_median_tempo_from_dataset(self):
+        """Extracts tempos from all MIDI files in the data_path and returns the median tempo."""
+        all_tempos = []
+        print(f"Analyzing tempos from MIDI files in {self.data_path}...")
+        for file_path in glob.glob(self.data_path + "*.mid"):
+            try:
+                midi = converter.parse(file_path)
+                for el in midi.flat.getElementsByClass(tempo.MetronomeMark):
+                    bpm = None
+                    if hasattr(el, 'number') and el.number is not None:
+                        bpm = el.number
+                    elif hasattr(el, 'getQuarterBPM'):
+                        try:
+                            bpm = el.getQuarterBPM()
+                        except Exception:
+                            pass # Ignore if getQuarterBPM fails
+                    if bpm is not None:
+                        all_tempos.append(bpm)
+            except Exception as e:
+                print(f"Could not parse tempo from {file_path}: {e}")
+
+        if not all_tempos:
+            print("No tempo information found in the dataset. Defaulting to 120 BPM.")
+            return 120  # Default tempo
+
+        median_tempo = np.median(all_tempos)
+        print(f"Found tempos: {sorted(list(set(all_tempos)))}")
+        print(f"Median tempo of the dataset: {median_tempo:.2f} BPM")
+        return median_tempo
 
     def prepare_sequences(self, notes_with_instruments, n_vocab, sequence_length):
         pitchnames = sorted(list(set(notes_with_instruments)))

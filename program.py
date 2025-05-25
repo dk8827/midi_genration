@@ -19,7 +19,13 @@ if __name__ == '__main__':
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
     processor = MidiProcessor(data_path=MIDI_DATA_PATH, default_instrument_name=DEFAULT_INSTRUMENT_NAME, time_resolution=TIME_RESOLUTION)
-    writer = MidiFileWriter(midi_processor=processor, default_instrument_name=DEFAULT_INSTRUMENT_NAME)
+    
+    # Calculate median tempo from the dataset
+    median_dataset_tempo = processor.get_median_tempo_from_dataset()
+    
+    writer = MidiFileWriter(midi_processor=processor, 
+                            default_instrument_name=DEFAULT_INSTRUMENT_NAME,
+                            target_tempo=median_dataset_tempo)
 
     print("--- Loading and Preprocessing Data ---")
     notes_corpus = None

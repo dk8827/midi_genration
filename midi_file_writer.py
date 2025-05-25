@@ -5,15 +5,16 @@ from config import DEFAULT_INSTRUMENT_NAME
 # from midi_processor import MidiProcessor # Assuming midi_processor.py will exist
 
 class MidiFileWriter:
-    def __init__(self, midi_processor, default_instrument_name=DEFAULT_INSTRUMENT_NAME):
+    def __init__(self, midi_processor, default_instrument_name=DEFAULT_INSTRUMENT_NAME, target_tempo=120):
         self.midi_processor = midi_processor 
         self.default_instrument_name = default_instrument_name
+        self.target_tempo = target_tempo
 
     def create_midi(self, prediction_output, output_file="output_instrumental.mid"):
         score = stream.Score()
         ts = meter.TimeSignature('4/4')
         score.insert(0, ts)
-        tm = tempo.MetronomeMark(number=120)
+        tm = tempo.MetronomeMark(number=self.target_tempo)
         score.insert(0, tm)
 
         parts = {} # Maps instrument_name_str to stream.Part
