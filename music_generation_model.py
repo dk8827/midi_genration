@@ -54,7 +54,7 @@ class MusicGenerationModel:
         print(f"Training complete. Model saved to {model_file}")
         return history
 
-    def generate_music(self, keras_model_to_predict_with, pitchnames, event_to_int, num_events_to_generate, network_input_for_start):
+    def generate_music(self, keras_model_to_predict_with, pitchnames, event_to_int, num_events_to_generate, network_input_for_start, temperature=0.3):
         int_to_event = dict((number, event) for number, event in enumerate(pitchnames))
 
         if network_input_for_start is None or len(network_input_for_start) == 0:
@@ -81,13 +81,12 @@ class MusicGenerationModel:
             pattern = network_input_for_start[start_index].tolist()
 
         prediction_output = []
-        print(f"\n--- Generating Music (Seed: {pattern[:5]}...)---")
+        print(f"\n--- Generating Music (Temperature: {temperature}, Seed: {pattern[:5]}...)---")
 
         for event_index in range(num_events_to_generate):
             prediction_input_np = np.reshape(pattern, (1, len(pattern)))
             prediction_probs = keras_model_to_predict_with.predict(prediction_input_np, verbose=0)[0]
 
-            temperature = 0.75 
             prediction_probs = np.asarray(prediction_probs).astype('float64')
             
             prediction_probs_safe = np.log(prediction_probs + 1e-8) / temperature

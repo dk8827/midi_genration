@@ -170,6 +170,9 @@ if __name__ == '__main__':
 
     print("\n--- Generating Final Music ---")
     
+    # Define temperatures to test
+    temperatures = [0.1, 0.3, 0.5, 0.6, 0.8, 0.9]
+    
     # Prepare seed for final generation using the model's vocabulary (pitchnames_for_model, event_to_int_for_model)
     final_seed_sequences_list = []
     for i in range(len(notes_corpus) - SEQUENCE_LENGTH):
@@ -197,19 +200,29 @@ if __name__ == '__main__':
             print("Error: Cannot create even a fallback random seed. No pitchnames/vocab for model.")
 
     if music_model_instance and final_seed_sequences_np is not None and len(final_seed_sequences_np) > 0:
-        generated_sequence = music_model_instance.generate_music(
-            keras_model_to_predict_with=music_model_instance.model, 
-            pitchnames=pitchnames_for_model,       
-            event_to_int=event_to_int_for_model,   
-            num_events_to_generate=NUM_NOTES_TO_GENERATE,
-            network_input_for_start=final_seed_sequences_np 
-        )
+        # Generate music for each temperature
+        for temp in temperatures:
+            print(f"\nGenerating final music with temperature {temp}...")
+            
+            generated_sequence = music_model_instance.generate_music(
+                keras_model_to_predict_with=music_model_instance.model, 
+                pitchnames=pitchnames_for_model,       
+                event_to_int=event_to_int_for_model,   
+                num_events_to_generate=NUM_NOTES_TO_GENERATE,
+                network_input_for_start=final_seed_sequences_np,
+                temperature=temp
+            )
 
-        if generated_sequence:
-            output_midi_file = os.path.join(OUTPUT_FOLDER, f"final_generated_s{SEQUENCE_LENGTH}_e{EPOCHS}.mid")
-            writer.create_midi(generated_sequence, output_midi_file)
-        else:
-            print("Final music generation failed, no sequence produced.")
+            if generated_sequence:
+                output_midi_file = os.path.join(OUTPUT_FOLDER, f"final_generated_s{SEQUENCE_LENGTH}_e{EPOCHS}_temp{temp}.mid")
+                midi_written_successfully = writer.create_midi(generated_sequence, output_midi_file)
+                if midi_written_successfully:
+                    print(f"Final music generated with temperature {temp}: {output_midi_file}")
+                else:
+                    print(f"Final music generation with temperature {temp} failed - MIDI file was not created or was empty.")
+            else:
+                print(f"Final music generation with temperature {temp} failed - no sequence produced.")
+                
     elif not music_model_instance:
         print("Music model instance is not available for final generation. Skipping.")
     else: # final_seed_sequences_np is None or empty
