@@ -386,28 +386,51 @@ class MidiProcessor:
         return time_aware_sequence
 
     def _group_events_by_time(self, timed_events):
-        """Group events that occur at the same time slot."""
+        """Group events that occur at the same time slot, robustly handling conflicts."""
         from collections import defaultdict
         
-        time_groups = defaultdict(dict)  # {time_slot: {instrument: event}}
+        time_groups = defaultdict(dict)  # {time_slot: {instrument_name: (event_string, duration_value)}}
         
-        # Sort events by time
+        # Sort events by time to process them chronologically
         timed_events.sort(key=lambda x: x[0])
         
-        for time_slot, instrument, event, duration in timed_events:
-            # If an instrument already has an event at this time slot, 
-            # handle the conflict (could be overlapping notes)
-            if instrument in time_groups[time_slot]:
-                # For now, we'll concatenate overlapping events with '+'
-                # This part might need more sophisticated handling if durations differ
-                existing_event, existing_duration = time_groups[time_slot][instrument]
-                if existing_event != event:  # Only if it's actually different
-                    # Simple concatenation for event string, duration handling might need thought
-                    # For now, let's assume the first event's duration is kept or they are the same
-                    time_groups[time_slot][instrument] = (f"{existing_event}+{event}", existing_duration)
+        for time_slot, instr_name, current_event_str, current_duration_val in timed_events:
+            if instr_name not in time_groups[time_slot]:
+                # This is the first event for this instrument at this specific time_slot
+                time_groups[time_slot][instr_name] = (current_event_str, current_duration_val)
             else:
-                time_groups[time_slot][instrument] = (event, duration)
-        
+                # An event already exists for this instrument at this time_slot; a conflict needs resolution.
+                existing_event_str, existing_duration_val = time_groups[time_slot][instr_name]
+                
+                final_event_str = existing_event_str
+                final_duration_val = existing_duration_val
+
+                # Rule 1 & 2: Prioritize note/chord events over Rest events.
+                if current_event_str == "Rest" and existing_event_str != "Rest":
+                    # Current is Rest, existing is Note/Chord. Keep existing.
+                    pass # No change needed to final_event_str and final_duration_val
+                elif existing_event_str == "Rest" and current_event_str != "Rest":
+                    # Existing is Rest, current is Note/Chord. Use current.
+                    final_event_str = current_event_str
+                    final_duration_val = current_duration_val
+                elif current_event_str == "Rest" and existing_event_str == "Rest":
+                    # Both are Rests. Event string remains "Rest". Use the max duration.
+                    final_event_str = "Rest" 
+                    final_duration_val = max(existing_duration_val, current_duration_val)
+                else:
+                    # Both are note/chord events (neither is "Rest").
+                    # Combine event strings and take max duration.
+                    # Using sets ensures uniqueness of parts if an event is re-added.
+                    existing_parts = set(existing_event_str.split('+'))
+                    current_parts = set(current_event_str.split('+')) # current_event_str might be "X+Y"
+                    
+                    combined_parts = sorted(list(existing_parts.union(current_parts))) # Sort for a canonical form
+                    final_event_str = "+".join(combined_parts)
+                    
+                    final_duration_val = max(existing_duration_val, current_duration_val)
+
+                time_groups[time_slot][instr_name] = (final_event_str, final_duration_val)
+                
         return dict(time_groups)
 
     def _create_time_aware_sequence(self, time_grouped_events):
