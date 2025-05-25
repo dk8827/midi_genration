@@ -314,7 +314,10 @@ class MidiProcessor:
                         
                         for element in part.recurse().notesAndRests:
                             absolute_offset = element.getOffsetInHierarchy(midi)
-                            duration = element.duration.quarterLength
+                            quantized_duration = round(element.duration.quarterLength / self.time_resolution) * self.time_resolution
+                            if quantized_duration == 0 and element.duration.quarterLength > 0:
+                                quantized_duration = self.time_resolution
+                            duration = quantized_duration
                             
                             event_str = None
                             if isinstance(element, note.Note):
@@ -337,7 +340,10 @@ class MidiProcessor:
                     
                     for element in midi.flat.notesAndRests:
                         absolute_offset = element.getOffsetInHierarchy(midi)
-                        duration = element.duration.quarterLength
+                        quantized_duration = round(element.duration.quarterLength / self.time_resolution) * self.time_resolution
+                        if quantized_duration == 0 and element.duration.quarterLength > 0:
+                            quantized_duration = self.time_resolution
+                        duration = quantized_duration
                         
                         # Check for instrument changes
                         el_instr = element.getInstrument(returnDefault=False)
@@ -393,11 +399,14 @@ class MidiProcessor:
             # handle the conflict (could be overlapping notes)
             if instrument in time_groups[time_slot]:
                 # For now, we'll concatenate overlapping events with '+'
-                existing_event = time_groups[time_slot][instrument]
+                # This part might need more sophisticated handling if durations differ
+                existing_event, existing_duration = time_groups[time_slot][instrument]
                 if existing_event != event:  # Only if it's actually different
-                    time_groups[time_slot][instrument] = f"{existing_event}+{event}"
+                    # Simple concatenation for event string, duration handling might need thought
+                    # For now, let's assume the first event's duration is kept or they are the same
+                    time_groups[time_slot][instrument] = (f"{existing_event}+{event}", existing_duration)
             else:
-                time_groups[time_slot][instrument] = event
+                time_groups[time_slot][instrument] = (event, duration)
         
         return dict(time_groups)
 
@@ -413,15 +422,15 @@ class MidiProcessor:
             
             if len(instrument_events) == 1:
                 # Single instrument playing
-                instrument, event = list(instrument_events.items())[0]
-                sequence.append(f"{instrument}:{event}")
+                instrument, (event, duration) = list(instrument_events.items())[0]
+                sequence.append(f"{instrument}:{event}:{duration}")
             else:
                 # Multiple instruments playing simultaneously
                 # Create a compound event that represents simultaneity
                 simultaneous_parts = []
                 for instrument in sorted(instrument_events.keys()):  # Sort for consistency
-                    event = instrument_events[instrument]
-                    simultaneous_parts.append(f"{instrument}:{event}")
+                    event, duration = instrument_events[instrument]
+                    simultaneous_parts.append(f"{instrument}:{event}:{duration}")
                 
                 # Encode as simultaneous event
                 compound_event = f"SIMUL[{','.join(simultaneous_parts)}]"

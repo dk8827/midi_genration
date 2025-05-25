@@ -68,13 +68,26 @@ class MidiFileWriter:
                     for event in simultaneous_events:
                         if ':' not in event:
                             continue
-                        instrument_name_str, event_str = event.split(':', 1)
+                        
+                        parts_ = event.split(':')
+                        if len(parts_) == 3: # Instrument:Event:Duration
+                            instrument_name_str, event_str, duration_str = parts_
+                            try:
+                                event_duration_ql = float(duration_str)
+                            except ValueError:
+                                print(f"INFO (MidiWriter): Invalid duration '{duration_str}' in '{event}'. Defaulting to 0.5.")
+                                event_duration_ql = 0.5
+                        elif len(parts_) == 2: # Instrument:Event (default duration)
+                            instrument_name_str, event_str = parts_
+                            event_duration_ql = 0.5 # Default duration
+                        else:
+                            print(f"INFO (MidiWriter): Skipping malformed simultaneous event (incorrect number of ':') in '{pattern_item}': {event}")
+                            continue
                         
                         current_part = parts[instrument_name_str]
                         current_offset_for_this_part = part_offsets[instrument_name_str]
                         
                         m21_event = None
-                        event_duration_ql = 0.5 
 
                         if event_str == "Rest":
                             m21_event = note.Rest()
@@ -108,7 +121,20 @@ class MidiFileWriter:
                 
                 # Handle regular single instrument events
                 elif ':' in pattern_item:
-                    instrument_name_str, event_str = pattern_item.split(':', 1)
+                    parts_ = pattern_item.split(':')
+                    if len(parts_) == 3: # Instrument:Event:Duration
+                        instrument_name_str, event_str, duration_str = parts_
+                        try:
+                            event_duration_ql = float(duration_str)
+                        except ValueError:
+                            print(f"INFO (MidiWriter): Invalid duration '{duration_str}' in '{pattern_item}'. Defaulting to 0.5.")
+                            event_duration_ql = 0.5
+                    elif len(parts_) == 2: # Instrument:Event (default duration)
+                        instrument_name_str, event_str = parts_
+                        event_duration_ql = 0.5 # Default duration
+                    else:
+                        print(f"INFO (MidiWriter): Skipping malformed item (incorrect number of ':') in sequence for '{output_file}': {pattern_item}")
+                        continue
 
                     if instrument_name_str not in parts:
                         m21_instr_obj = self.midi_processor.get_instrument_from_name(instrument_name_str)
@@ -122,7 +148,6 @@ class MidiFileWriter:
                     current_offset_for_this_part = part_offsets[instrument_name_str]
                     
                     m21_event = None
-                    event_duration_ql = 0.5 
 
                     if event_str == "Rest":
                         m21_event = note.Rest()
