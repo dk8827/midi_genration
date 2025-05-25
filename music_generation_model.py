@@ -54,7 +54,7 @@ class MusicGenerationModel:
         print(f"Training complete. Model saved to {model_file}")
         return history
 
-    def generate_music(self, keras_model_to_predict_with, pitchnames, event_to_int, num_events_to_generate, network_input_for_start, temperature=0.3):
+    def generate_music(self, keras_model_to_predict_with, pitchnames, event_to_int, num_events_to_generate, network_input_for_start, temperature=0.5):
         int_to_event = dict((number, event) for number, event in enumerate(pitchnames))
 
         if network_input_for_start is None or len(network_input_for_start) == 0:

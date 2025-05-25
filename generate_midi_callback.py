@@ -22,11 +22,12 @@ class GenerateMidiCallback(keras.callbacks.Callback):
         self.music_generator_instance = music_generator_instance
         self.midi_file_writer = midi_file_writer
         self.base_filename = base_filename
-        self.temperatures = [0.1, 0.3, 0.5, 0.6, 0.8, 0.9]  # Multiple temperatures to test
+        self.temperatures = [0.5]  # Set temperature to constant 0.5
+        self.num_songs_to_generate_per_epoch = 4 # Number of songs to generate per epoch
         os.makedirs(self.output_folder, exist_ok=True)
 
     def on_epoch_end(self, epoch, logs=None):
-        print(f"\nEpoch {epoch+1} finished. Generating sample MIDI files for different temperatures...")
+        print(f"\nEpoch {epoch+1} finished. Generating {self.num_songs_to_generate_per_epoch} sample MIDI files with temperature 0.5...")
 
         current_seed_sequences = self.seed_input_sequences
         if self.seed_input_sequences is None or len(self.seed_input_sequences) == 0:
@@ -40,9 +41,10 @@ class GenerateMidiCallback(keras.callbacks.Callback):
                 print("Callback: Cannot generate seed, pitchnames or n_vocab missing/invalid.")
                 return
         
-        # Generate music for each temperature
-        for temp in self.temperatures:
-            print(f"\nGenerating music with temperature {temp}...")
+        # Generate music for the specified temperature, multiple times
+        for i in range(self.num_songs_to_generate_per_epoch):
+            temp = self.temperatures[0] # Use the constant temperature
+            print(f"\nGenerating music sample {i+1}/{self.num_songs_to_generate_per_epoch} with temperature {temp}...")
             
             generated_sequence = self.music_generator_instance.generate_music(
                 keras_model_to_predict_with=self.model, 
@@ -53,18 +55,18 @@ class GenerateMidiCallback(keras.callbacks.Callback):
                 temperature=temp
             )
 
-            print(f"Callback: Raw generated sequence for epoch {epoch+1}, temp {temp}: {generated_sequence[:10]}..." if len(generated_sequence) > 10 else f"Callback: Raw generated sequence for epoch {epoch+1}, temp {temp}: {generated_sequence}")
+            print(f"Callback: Raw generated sequence for epoch {epoch+1}, temp {temp}, sample {i+1}: {generated_sequence[:10]}..." if len(generated_sequence) > 10 else f"Callback: Raw generated sequence for epoch {epoch+1}, temp {temp}, sample {i+1}: {generated_sequence}")
 
             if generated_sequence:
-                output_midi_file = os.path.join(self.output_folder, f"{self.base_filename}_{epoch+1}_temp{temp}.mid")
+                output_midi_file = os.path.join(self.output_folder, f"{self.base_filename}_{epoch+1}_temp{temp}_sample{i+1}.mid")
                 # MidiFileWriter.create_midi now returns True if a meaningful MIDI was written, False otherwise.
                 midi_written_successfully = self.midi_file_writer.create_midi(generated_sequence, output_midi_file)
 
                 if midi_written_successfully:
                     # The MidiFileWriter already prints a success message if it writes the file.
-                    print(f"Callback: Sample MIDI for epoch {epoch+1}, temp {temp} was generated: {output_midi_file}")
+                    print(f"Callback: Sample MIDI for epoch {epoch+1}, temp {temp}, sample {i+1} was generated: {output_midi_file}")
                 else:
                     # The MidiFileWriter prints detailed reasons if it fails to write or deems the content empty.
-                    print(f"Callback: INFO - MIDI file for epoch {epoch+1}, temp {temp} ('{output_midi_file}') was not generated or was deemed empty by the MIDI writer. See writer logs for details.")
+                    print(f"Callback: INFO - MIDI file for epoch {epoch+1}, temp {temp}, sample {i+1} ('{output_midi_file}') was not generated or was deemed empty by the MIDI writer. See writer logs for details.")
             else:
-                print(f"Callback: MIDI generation failed for epoch {epoch+1}, temp {temp}, no sequence produced.") 
+                print(f"Callback: MIDI generation failed for epoch {epoch+1}, temp {temp}, sample {i+1}, no sequence produced.") 
